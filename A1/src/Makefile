@@ -1,7 +1,7 @@
 CC=gcc
 CFLAGS=-Wall -Wextra -pedantic -std=gnu99 -g
 LDFLAGS=-lm
-PROGRAMS=random_ids id_query_naive coord_query_naive
+PROGRAMS=random_ids id_query_naive coord_query_naive id_query_indexed id_query_binsort
 TESTS=..
 
 .PHONY: all test clean ../src.zip
@@ -24,6 +24,15 @@ coord_query.o: coord_query.c
 	$(CC) -c $< $(CFLAGS)
 
 record.o: record.c
+	$(CC) -c $< $(CFLAGS)
+	
+id_query_naive.o: id_query_naive.c
+	$(CC) -c $< $(CFLAGS)
+	
+id_query_indexed.o: id_query_indexed.c
+	$(CC) -c $< $(CFLAGS)
+
+id_query_binsort.o: id_query_binsort.c
 	$(CC) -c $< $(CFLAGS)
 
 sort.o: sort.c
