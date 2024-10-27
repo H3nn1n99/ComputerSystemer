@@ -15,12 +15,42 @@
 #include "job_queue.h"
 
 pthread_mutex_t stdout_mutex = PTHREAD_MUTEX_INITIALIZER;
-
 // err.h contains various nonstandard BSD extensions, but they are
 // very handy.
 #include <err.h>
-
 #include "histogram.h"
+
+// Global histogram and mutex for synchronization
+int global_histogram[8] = {0};
+pthread_mutex_t histogram_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+void *worker_function(void *arg) {
+    struct job_queue *q = (struct job_queue *)arg;
+    char *file_path;
+
+    // Local histogram for each thread
+    int local_histogram[8] = {0};
+
+    // process files from the job queue
+    while (job_queue_pop(q, (void **)&file_path) == 0) {
+        FILE *file = fopen(file_path, "r");
+        if (file) {
+            unsigned char byte;
+            while (fread(&byte, 1, 1, file) > 0) {
+                update_histogram(local_histogram, byte);
+            }
+            fclose(file);
+        }
+        free(file_path);  // Free the path memory
+
+        // histogram update
+        pthread_mutex_lock(&histogram_mutex);
+        merge_histogram(global_histogram, local_histogram);
+        print_histogram(global_histogram);  // Print the histogram
+        pthread_mutex_unlock(&histogram_mutex);
+    }
+    return NULL;
+}
 
 int main(int argc, char * const *argv) {
   if (argc < 2) {
@@ -49,7 +79,13 @@ int main(int argc, char * const *argv) {
     paths = &argv[1];
   }
 
-  assert(0); // Initialise the job queue and some worker threads here.
+  struct job_queue q;
+  job_queue_init(&q, 64);
+
+  pthread_t threads[num_threads];
+  for (int i = 0; i < num_threads; i++) {
+    pthread_create(&threads[i], NULL, worker_function, &q);
+  }
 
   // FTS_LOGICAL = follow symbolic links
   // FTS_NOCHDIR = do not change the working directory of the process
@@ -70,7 +106,7 @@ int main(int argc, char * const *argv) {
     case FTS_D:
       break;
     case FTS_F:
-      assert(0); // Process the file p->fts_path, somehow.
+      job_queue_push(&q, strdup(p->fts_path));
       break;
     default:
       break;
@@ -79,7 +115,13 @@ int main(int argc, char * const *argv) {
 
   fts_close(ftsp);
 
-  assert(0); // Shut down the job queue and the worker threads here.
+  // Shut down the job queue
+  job_queue_destroy(&q);
+
+  //all worker threads finish
+  for (int i = 0; i < num_threads; i++) {
+    pthread_join(threads[i], NULL);  // Join threads
+  }
 
   move_lines(9);
 
